@@ -42,9 +42,6 @@ def convert_frame_to_video(file_path, fps, pathOut=dir_path+ '/output/'):
     
     #reading each files
     img = cv2.imread(file_path)
-
-
-
     cv2.imwrite(pathOut+"000.jpg", img)
     img = cv2.imread(pathOut+"000.jpg")
     height, width, layers = img.shape
@@ -62,43 +59,102 @@ def convert_frame_to_video(file_path, fps, pathOut=dir_path+ '/output/'):
     print(pathOut)
     return pathOut+"000.mp4"
 
-def Hcalc(cap, xmap, ymap, img):
+# def Hcalc(cap, xmap, ymap):
+#     """Calculate and return homography for stitching process."""
+#     Mlist = []
+#     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+#     print("FRAME",frame_count)
+#     for frame_no in np.arange(0, frame_count, int(frame_count / 10)):
+#         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
+#         ret, frame = cap.read()
+#         if ret:
+#             # defish / unwarp
+#             cam1 = cv2.remap(frame[:, :1280], xmap, ymap, cv2.INTER_LINEAR)
+#             cam2 = cv2.remap(frame[:, 1280:], xmap, ymap, cv2.INTER_LINEAR)
+#             cam1_gray = cv2.cvtColor(cam1, cv2.COLOR_BGR2GRAY)
+#             cam2_gray = cv2.cvtColor(cam2, cv2.COLOR_BGR2GRAY)
+
+#             # shift the remapped images along x-axis
+#             shifted_cams = np.zeros((H * 2, W, 3), np.uint8)
+#             shifted_cams[H:, (W - W_remap) // 2:(W + W_remap) // 2] = cam2
+#             shifted_cams[:H, :W_remap // 2] = cam1[:, W_remap // 2:]
+#             shifted_cams[:H, W - W_remap // 2:] = cam1[:, :W_remap // 2]
+
+#             # find matches and extract pairs of correspondent matching points
+#             matchesL = feature_matching.getMatches_goodtemplmatch(
+#                 cam1_gray[offsetYL:H - offsetYL, W // 2:],
+#                 cam2_gray[offsetYL:H - offsetYL, :W_remap - W // 2],
+#                 templ_shape, maxL)
+#             matchesR = feature_matching.getMatches_goodtemplmatch(
+#                 cam2_gray[offsetYR:H - offsetYR, W // 2:],
+#                 cam1_gray[offsetYR:H - offsetYR, :W_remap - W // 2],
+#                 templ_shape, maxR)
+#             matchesR = matchesR[:, -1::-1]
+
+#             matchesL = matchesL + ((W - W_remap) // 2, offsetYL)
+#             matchesR = matchesR + ((W - W_remap) // 2 + W // 2, offsetYR)
+#             zipped_matches = zip(matchesL, matchesR)
+#             matches = np.int32([e for i in zipped_matches for e in i])
+#             pts1 = matches[:, 0]
+#             pts2 = matches[:, 1]
+
+#             # find homography from pairs of correspondent matchings
+#             M, status = cv2.findHomography(pts2, pts1, cv2.RANSAC, 4.0)
+#             Mlist.append(M)
+#     M = np.average(np.array(Mlist), axis=0)
+#     # print(M)
+#     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+#     return M
+def Hcalc(cap, xmap, ymap):
     """Calculate and return homography for stitching process."""
     Mlist = []
-    H, W, _ = img.shape
-    W_remap = int(W * 0.54)  # adjust this value as needed
-    print("HELLO", H,W)
-    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    print("FRAME",frame_count)
-    for frame_no in np.arange(0, frame_count, int(frame_count / 10)):
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print("FRAME", frame_count)
+    for frame_no in np.linspace(0, frame_count - 1, num=10, dtype=int):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
         ret, frame = cap.read()
         if ret:
             # defish / unwarp
-            cam1 = cv2.remap(frame[:, :H], xmap, ymap, cv2.INTER_LINEAR)
-            cam2 = cv2.remap(frame[:, H:], xmap, ymap, cv2.INTER_LINEAR)
+            cam1 = cv2.remap(frame[:, :frame.shape[1] // 2], xmap, ymap, cv2.INTER_LINEAR)
+            cam2 = cv2.remap(frame[:, frame.shape[1] // 2:], xmap, ymap, cv2.INTER_LINEAR)
             cam1_gray = cv2.cvtColor(cam1, cv2.COLOR_BGR2GRAY)
             cam2_gray = cv2.cvtColor(cam2, cv2.COLOR_BGR2GRAY)
 
             # shift the remapped images along x-axis
-            shifted_cams = np.zeros((H * 2, W, 3), np.uint8)
-            shifted_cams[H:, (W - W_remap) // 2:(W + W_remap) // 2] = cam2
-            shifted_cams[:H, :W_remap // 2] = cam1[:, W_remap // 2:]
-            shifted_cams[:H, W - W_remap // 2:] = cam1[:, :W_remap // 2]
+
+
+            combined_width = cam1.shape[1] + cam2.shape[1]
+            max_height = max(cam1.shape[0], cam2.shape[0])
+
+            shifted_cams = np.zeros((max_height * 2, combined_width, 3), np.uint8)
+
+            shifted_cams[max_height - cam1.shape[0]:max_height, :cam1.shape[1]] = cam1
+            shifted_cams[max_height - cam2.shape[0]:max_height, cam1.shape[1]:combined_width] = cam2
+
+
+            # shifted_cams = np.zeros((cam1.shape[0] * 2, cam2.shape[1] * 2, 3), np.uint8)
+            # shifted_cams[shifted_cams.shape[0] // 2 - cam1.shape[0] // 2:shifted_cams.shape[0] // 2 + cam1.shape[0] // 2, 
+            #               cam2.shape[1] // 2:cam2.shape[1] // 2 + cam2.shape[1]] = cam1
+            # shifted_cams[shifted_cams.shape[0] // 2 - cam2.shape[0] // 2:shifted_cams.shape[0] // 2 + cam2.shape[0] // 2, 
+            #               cam2.shape[1] // 2 - cam2.shape[1]:cam2.shape[1] // 2] = cam2
+
+
+
+
 
             # find matches and extract pairs of correspondent matching points
             matchesL = feature_matching.getMatches_goodtemplmatch(
-                cam1_gray[offsetYL:H - offsetYL, W // 2:],
-                cam2_gray[offsetYL:H - offsetYL, :W_remap - W // 2],
+                cam1_gray[offsetYL:cam1.shape[0] - offsetYL, cam1.shape[1] // 2:],
+                cam2_gray[offsetYL:cam2.shape[0] - offsetYL, :cam2.shape[1] // 2],
                 templ_shape, maxL)
             matchesR = feature_matching.getMatches_goodtemplmatch(
-                cam2_gray[offsetYR:H - offsetYR, W // 2:],
-                cam1_gray[offsetYR:H - offsetYR, :W_remap - W // 2],
+                cam2_gray[offsetYR:cam2.shape[0] - offsetYR, cam2.shape[1] // 2:],
+                cam1_gray[offsetYR:cam1.shape[0] - offsetYR, :cam1.shape[1] // 2],
                 templ_shape, maxR)
             matchesR = matchesR[:, -1::-1]
 
-            matchesL = matchesL + ((W - W_remap) // 2, offsetYL)
-            matchesR = matchesR + ((W - W_remap) // 2 + W // 2, offsetYR)
+            matchesL = matchesL + (cam2.shape[1] // 2, offsetYL)
+            matchesR = matchesR + (cam1.shape[1] // 2 + cam2.shape[1] // 2, offsetYR)
             zipped_matches = zip(matchesL, matchesR)
             matches = np.int32([e for i in zipped_matches for e in i])
             pts1 = matches[:, 0]
@@ -106,88 +162,37 @@ def Hcalc(cap, xmap, ymap, img):
 
             # find homography from pairs of correspondent matchings
             M, status = cv2.findHomography(pts2, pts1, cv2.RANSAC, 4.0)
+
             Mlist.append(M)
     M = np.average(np.array(Mlist), axis=0)
     # print(M)
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     return M
+def video_convert(input, output):
 
 
-def image_Hcalc(cap, xmap, ymap):
-    """Calculate and return homography for stitching process."""
-    
 
-    cam1 = cv2.remap(cap, xmap, ymap, cv2.INTER_LINEAR)
-    cam2 = cv2.remap(cap, xmap, ymap, cv2.INTER_LINEAR)
-    cam1_gray = cv2.cvtColor(cam1, cv2.COLOR_BGR2GRAY)
-    cam2_gray = cv2.cvtColor(cam2, cv2.COLOR_BGR2GRAY)
-
-    # # need to take this out of the loop
-    Mlist = []
-    # frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    # for frame_no in np.arange(0, frame_count, int(frame_count / 10)):
-    #     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
-    #     ret, frame = cap.read()
-    #     if ret:
-    #         # defish / unwarp
-    #         cam1 = cv2.remap(frame[:, :1280], xmap, ymap, cv2.INTER_LINEAR)
-    #         cam2 = cv2.remap(frame[:, 1280:], xmap, ymap, cv2.INTER_LINEAR)
-    #         cam1_gray = cv2.cvtColor(cam1, cv2.COLOR_BGR2GRAY)
-    #         cam2_gray = cv2.cvtColor(cam2, cv2.COLOR_BGR2GRAY)
-
-    #         # shift the remapped images along x-axis
-    shifted_cams = np.zeros((H * 2, W, 3), np.uint8)
-    shifted_cams[H:, (W - W_remap) // 2:(W + W_remap) // 2] = cam2
-    shifted_cams[:H, :W_remap // 2] = cam1[:, W_remap // 2:]
-    shifted_cams[:H, W - W_remap // 2:] = cam1[:, :W_remap // 2]
-
-    # find matches and extract pairs of correspondent matching points
-    matchesL = feature_matching.getMatches_goodtemplmatch(
-        cam1_gray[offsetYL:H - offsetYL, W // 2:],
-        cam2_gray[offsetYL:H - offsetYL, :W_remap - W // 2],
-        templ_shape, maxL)
-    matchesR = feature_matching.getMatches_goodtemplmatch(
-        cam2_gray[offsetYR:H - offsetYR, W // 2:],
-        cam1_gray[offsetYR:H - offsetYR, :W_remap - W // 2],
-        templ_shape, maxR)
-    matchesR = matchesR[:, -1::-1]
-
-    matchesL = matchesL + ((W - W_remap) // 2, offsetYL)
-    matchesR = matchesR + ((W - W_remap) // 2 + W // 2, offsetYR)
-    zipped_matches = zip(matchesL, matchesR)
-    matches = np.int32([e for i in zipped_matches for e in i])
-    pts1 = matches[:, 0]
-    pts2 = matches[:, 1]
-
-    # find homography from pairs of correspondent matchings
-    M, status = cv2.findHomography(pts2, pts1, cv2.RANSAC, 4.0)
-    Mlist.append(M)
-    M = np.average(np.array(Mlist), axis=0)
-    # # print(M)
-    # cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    return M
-
-def image_convert(input, output):
-
+    img = cv2.imread(input)
     H, W, _ = img.shape
     W_remap = int(W * 0.54)  # adjust this value as needed
 
+    print(H,W, W_remap)
 
-    convert_input = convert_frame_to_video(input)
+
+
+    convert_input = convert_frame_to_video(input, 30.0)
     print(convert_input)
 
     cap = cv2.VideoCapture(convert_input)
-
-    # if it's a picture, convert it into a 1 frame video
-    
+    # cap = cv2.VideoCapture(input)
 
     # define the codec and create VideoWriter object
-    # fourcc = cv2.VideoWriter_fourcc(*'MPEG')
-    # out = cv2.VideoWriter(output, fourcc, 30.0, (W, H))
+    fourcc = cv2.VideoWriter_fourcc(*'MPEG')
+    out = cv2.VideoWriter(output, fourcc, 30.0, (W, H))
 
     # obtain xmap and ymap
     xmap, ymap = dewarp.buildmap(Ws=W_remap, Hs=H, Wd=W, Hd=W, fov=FOV)
-
+    print(258)
     # calculate homography
     M = Hcalc(cap, xmap, ymap)
 
@@ -205,96 +210,6 @@ def image_convert(input, output):
         # de-warp
         cam1 = cv2.remap(frame[:, :1280], xmap, ymap, cv2.INTER_LINEAR)
         cam2 = cv2.remap(frame[:, 1280:], xmap, ymap, cv2.INTER_LINEAR)
-
-        # shift the remapped images along x-axis
-        shifted_cams = np.zeros((H * 2, W, 3), np.uint8)
-        shifted_cams[H:, (W - W_remap) // 2:(W + W_remap) // 2] = cam2
-        shifted_cams[:H, :W_remap // 2] = cam1[:, W_remap // 2:]
-        shifted_cams[:H, W - W_remap // 2:] = cam1[:, :W_remap // 2]
-
-        # warp cam2 using homography M
-        warped2 = cv2.warpPerspective(shifted_cams[H:], M, (W, H))
-        warped1 = shifted_cams[:H]
-
-        # crop to get a largest rectangle, and resize to maintain resolution
-        warped1 = cv2.resize(warped1[top:bottom], (W, H))
-        warped2 = cv2.resize(warped2[top:bottom], (W, H))
-
-        # image labeling (find minimum error boundary cut)
-        mask, minloc_old = optimal_seamline.imgLabeling(
-            warped1[:, W_remap // 2 - W_lbl:W_remap // 2],
-            warped2[:, W_remap // 2 - W_lbl:W_remap // 2],
-            warped1[:, W - W_remap // 2:W - W_remap // 2 + W_lbl],
-            warped2[:, W - W_remap // 2:W - W_remap // 2 + W_lbl],
-            (W, H), W_remap // 2 - W_lbl, W - W_remap // 2)
-
-        labeled = warped1 * mask + warped2 * (1 - mask)
-
-        # fill empty area of warped1 and warped2, to avoid darkening
-        warped1[:, W_remap // 2:W - W_remap //
-                2] = warped2[:, W_remap // 2:W - W_remap // 2]
-        warped2[EAof2 == 0] = warped1[EAof2 == 0]
-
-        # multi band blending
-        blended = blending.multi_band_blending(
-            warped1, warped2, mask, blend_level)
-
-        cv2.imshow('p', blended.astype(np.uint8))
-        cv2.waitKey(0)
-
-        # write results from phases
-        out.write(blended.astype(np.uint8))
-        print(dir_path)
-        cv2.imwrite(dir_path + '/output/0.png', cam1)
-        cv2.imwrite(dir_path + '/output/1.png', cam2)
-        cv2.imwrite(dir_path + '/output/2.png', shifted_cams)
-        cv2.imwrite(dir_path + '/output/3.png', warped2)
-        cv2.imwrite(dir_path + '/output/4.png', warped1)
-        cv2.imwrite(dir_path + '/output/labeled.png', labeled.astype(np.uint8))
-        cv2.imwrite(dir_path + '/output/blended.png', blended.astype(np.uint8))
-
-    cap.release()
-    out.release()
-    cv2.destroyAllWindows()
-
-
-def video_convert(input, output):
-    
-    img = cv2.imread(input)
-    H, W, _ = img.shape
-    W_remap = int(W * 0.54)  # adjust this value as needed
-
-
-    convert_input = convert_frame_to_video(input, 30.0)
-    print(convert_input)
-
-    cap = cv2.VideoCapture(convert_input)
-    # cap = cv2.VideoCapture(input)
-
-    # define the codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'MPEG')
-    out = cv2.VideoWriter(output, fourcc, 30.0, (W, H))
-
-    # obtain xmap and ymap
-    xmap, ymap = dewarp.buildmap(Ws=W_remap, Hs=H, Wd=H, Hd=H, fov=FOV)
-    print(258)
-    # calculate homography
-    M = Hcalc(cap, xmap, ymap, img)
-
-    # calculate vertical boundary of warped image, for later cropping
-    top, bottom = cropping.verticalBoundary(M, W_remap, W, H)
-
-    # estimate empty (invalid) area of warped2
-    EAof2 = np.zeros((H, W, 3), np.uint8)
-    EAof2[:, (W - W_remap) // 2 + 1:(W + W_remap) // 2 - 1] = 255
-    EAof2 = cv2.warpPerspective(EAof2, M, (W, H))
-
-    # process the first frame
-    ret, frame = cap.read()
-    if ret:
-        # de-warp
-        cam1 = cv2.remap(frame[:, :H], xmap, ymap, cv2.INTER_LINEAR)
-        cam2 = cv2.remap(frame[:, H:], xmap, ymap, cv2.INTER_LINEAR)
 
         # shift the remapped images along x-axis
         shifted_cams = np.zeros((H * 2, W, 3), np.uint8)
